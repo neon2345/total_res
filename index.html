@@ -286,6 +286,10 @@
                     strokeOpacity: 0.6,
                     map: map
                 });
+
+                polyline.on('click', function() {
+                    highlightRoute(route.route_id);
+                });
                 
                 routeMarkers[route.route_id] = markers;
                 routePolylines[route.route_id] = polyline;
