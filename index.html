@@ -100,8 +100,27 @@
             font-size: 12px;
             color: #666;
             line-height: 1.4;
-            max-height: 60px;
+            max-height: 40px;
             overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            transition: max-height 0.3s;
+        }
+        
+        .route-item.expanded .route-stores {
+            max-height: 1000px;
+            -webkit-line-clamp: unset;
+            overflow: visible;
+        }
+        
+        .expand-btn {
+            color: #1890ff;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 4px;
+            display: inline-block;
         }
         
         .route-item.active .route-stores {
@@ -250,10 +269,25 @@
                             ${route.store_count}家门店 | ${route.total_distance_km}km | ${route.total_time_h}h
                         </div>
                     </div>
-                    <div class="route-stores">
-                        ${route.store_sequence}
-                    </div>
+                    <div class="route-stores">${route.store_sequence}</div>
+                    <span class="expand-btn">展开</span>
                 `;
+                
+                // 展开/收起逻辑
+                let isExpanded = false;
+                const expandBtn = routeItem.querySelector('.expand-btn');
+                const storesDiv = routeItem.querySelector('.route-stores');
+                expandBtn.onclick = (e) => {
+                    e.stopPropagation(); // 不触发高亮
+                    isExpanded = !isExpanded;
+                    if (isExpanded) {
+                        routeItem.classList.add('expanded');
+                        expandBtn.textContent = '收起';
+                    } else {
+                        routeItem.classList.remove('expanded');
+                        expandBtn.textContent = '展开';
+                    }
+                };
                 
                 routeList.appendChild(routeItem);
             });
@@ -286,7 +320,7 @@
                     strokeOpacity: 0.6,
                     map: map
                 });
-
+                
                 polyline.on('click', function() {
                     highlightRoute(route.route_id);
                 });
@@ -294,7 +328,7 @@
                 routeMarkers[route.route_id] = markers;
                 routePolylines[route.route_id] = polyline;
                 allMarkers.push(...markers);
-               allPolylines.push(polyline);
+                allPolylines.push(polyline);
             });
         }
         
