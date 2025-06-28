@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>门店路线优化结果展示</title>
+    <script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.15&key=05274d5027e6b22978b2ade4630f3596"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .sidebar {
+            width: 400px;
+            background: white;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding: 20px;
+            background: #1890ff;
+            color: white;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            font-size: 14px;
+        }
+        
+        .route-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        
+        .route-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .route-item:hover {
+            background: #e6f7ff;
+            border-color: #1890ff;
+        }
+        
+        .route-item.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+        
+        .route-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .route-id {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .route-stats {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .route-item.active .route-stats {
+            color: #e6f7ff;
+        }
+        
+        .route-stores {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.4;
+            max-height: 60px;
+            overflow: hidden;
+        }
+        
+        .route-item.active .route-stores {
+            color: #e6f7ff;
+        }
+        
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .control-btn {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .control-btn:hover {
+            background: #40a9ff;
+        }
+        
+        .control-btn:last-child {
+            margin-bottom: 0;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            z-index: 2000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="header">
+                <h1>门店路线优化结果</h1>
+                <div class="stats">
+                    <span id="total-routes">路线: 0</span>
+                    <span id="total-stores">门店: 0</span>
+                </div>
+            </div>
+            <div class="route-list" id="route-list">
+                <!-- 路线列表将通过JavaScript动态生成 -->
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="controls">
+                <button class="control-btn" onclick="showAllRoutes()">显示所有路线</button>
+                <button class="control-btn" onclick="clearHighlight()">清除高亮</button>
+                <button class="control-btn" onclick="fitBounds()">适应视图</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="loading" id="loading" style="display: none;">
+        正在加载数据...
+    </div>
+
+    <script>
+        let map;
+        let routesData = [];
+        let currentHighlightedRoute = null;
+        let allMarkers = [];
+        let allPolylines = [];
+        let routeMarkers = {};
+        let routePolylines = {};
+        
+        // 初始化地图
+        function initMap() {
+            map = new AMap.Map('map', {
+                zoom: 5,
+                center: [116.397428, 39.90923], // 北京
+                mapStyle: 'amap://styles/normal'
+            });
+        }
+        
+        // 加载路线数据
+        async function loadRoutesData() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                const response = await fetch('audit_temp/comp_total_routes_data.json');
+                const data = await response.json();
+                routesData = data.routes;
+                
+                document.getElementById('total-routes').textContent = `路线: ${data.total_routes}`;
+                document.getElementById('total-stores').textContent = `门店: ${data.total_stores}`;
+                
+                renderRouteList();
+                renderAllRoutes();
+                fitBounds();
+                
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                document.getElementById('loadfail').style.display = 'block';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // 渲染路线列表
+        function renderRouteList() {
+            const routeList = document.getElementById('route-list');
+            routeList.innerHTML = '';
+            
+            routesData.forEach(route => {
+                const routeItem = document.createElement('div');
+                routeItem.className = 'route-item';
+                routeItem.onclick = () => highlightRoute(route.route_id);
+                
+                routeItem.innerHTML = `
+                    <div class="route-header">
+                        <div class="route-id">路线 ${route.route_id}</div>
+                        <div class="route-stats">
+                            ${route.store_count}家门店 | ${route.total_distance_km}km | ${route.total_time_h}h
+                        </div>
+                    </div>
+                    <div class="route-stores">
+                        ${route.store_sequence}
+                    </div>
+                `;
+                
+                routeList.appendChild(routeItem);
+            });
+        }
+        
+        // 渲染所有路线
+        function renderAllRoutes() {
+            routesData.forEach(route => {
+                const markers = [];
+                const path = [];
+                
+                route.stores.forEach(store => {
+                    const marker = new AMap.Marker({
+                        position: [store.lon, store.lat],
+                        map: map,
+                        icon: new AMap.Icon({
+                            size: new AMap.Size(8, 8),
+                            image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOCIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgOCA4IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8Y2lyY2xlIGN4PSI0IiBjeT0iNCIgcj0iNCIgZmlsbD0iIzE4OTBmZiIvPgo8L3N2Zz4K',
+                            imageSize: new AMap.Size(8, 8)
+                        })
+                    });
+                    markers.push(marker);
+                    path.push([store.lon, store.lat]);
+                });
+                
+                const polyline = new AMap.Polyline({
+                    path: path,
+                    strokeColor: '#1890ff',
+                    strokeWeight: 4,
+                    strokeOpacity: 0.6,
+                    map: map
+                });
+                
+                routeMarkers[route.route_id] = markers;
+                routePolylines[route.route_id] = polyline;
+                allMarkers.push(...markers);
+               allPolylines.push(polyline);
+            });
+        }
+        
+        // 高亮显示指定路线
+        function highlightRoute(routeId) {
+            // 清除之前的高亮
+            clearHighlight();
+            
+            // 设置当前高亮路线
+            currentHighlightedRoute = routeId;
+            
+            // 高亮路线
+            const polyline = routePolylines[routeId];
+            if (polyline) {
+                polyline.setOptions({
+                    strokeColor: '#ff4d4f',
+                    strokeWeight: 4,
+                    strokeOpacity: 1
+                });
+            }
+            
+            // 高亮门店
+            const markers = routeMarkers[routeId];
+            if (markers) {
+                markers.forEach(marker => {
+                    marker.setIcon(new AMap.Icon({
+                        size: new AMap.Size(12, 12),
+                        image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNiIgY3k9IjYiIHI9IjYiIGZpbGw9IiNmZjRkNGYiLz4KPC9zdmc+Cg==',
+                        imageSize: new AMap.Size(12, 12)
+                    }));
+                });
+            }
+            
+            // 高亮左侧列表项
+            const routeItems = document.querySelectorAll('.route-item');
+            routeItems.forEach(item => item.classList.remove('active'));
+            const targetItem = Array.from(routeItems).find(item => 
+                item.querySelector('.route-id').textContent === `路线 ${routeId}`
+            );
+            if (targetItem) {
+                targetItem.classList.add('active');
+                targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            
+            // 调整地图视图到该路线
+            if (markers && markers.length > 0) {
+                const bounds = new AMap.Bounds();
+                markers.forEach(marker => {
+                    bounds.extend(marker.getPosition());
+                });
+                map.setBounds(bounds, { padding: [50, 50, 50, 50] });
+            }
+        }
+        
+        // 清除高亮
+        function clearHighlight() {
+            if (currentHighlightedRoute) {
+                const polyline = routePolylines[currentHighlightedRoute];
+                if (polyline) {
+                    polyline.setOptions({
+                        strokeColor: '#1890ff',
+                        strokeWeight: 2,
+                        strokeOpacity: 0.6
+                    });
+                }
+                
+                const markers = routeMarkers[currentHighlightedRoute];
+                if (markers) {
+                    markers.forEach(marker => {
+                        marker.setIcon(new AMap.Icon({
+                            size: new AMap.Size(8, 8),
+                            image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOCIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgOCA4IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8Y2lyY2xlIGN4PSI0IiBjeT0iNCIgcj0iNCIgZmlsbD0iIzE4OTBmZiIvPgo8L3N2Zz4K',
+                            imageSize: new AMap.Size(8, 8)
+                        }));
+                    });
+                }
+                
+                currentHighlightedRoute = null;
+            }
+            
+            // 清除左侧列表高亮
+            document.querySelectorAll('.route-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        }
+        
+        // 显示所有路线
+        function showAllRoutes() {
+            clearHighlight();
+            fitBounds();
+        }
+        
+        // 适应视图
+        function fitBounds() {
+            if (allMarkers.length > 0) {
+                const bounds = new AMap.Bounds();
+                allMarkers.forEach(marker => {
+                    bounds.extend(marker.getPosition());
+                });
+                map.setBounds(bounds, { padding: [50, 50, 50, 50] });
+            }
+        }
+        
+        // 页面加载完成后初始化
+        window.onload = function() {
+            initMap();
+            loadRoutesData();
+        };
+    </script>
+</body>
+</html> 
