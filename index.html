@@ -233,7 +233,7 @@
         async function loadRoutesData() {
             try {
                 document.getElementById('loading').style.display = 'block';
-                const response = await fetch('comp_total_routes_data.json');
+                const response = await fetch('comp_total_routes_data_2025-07-01.json');
                 const data = await response.json();
                 routesData = data.routes;
                 
